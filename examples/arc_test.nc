@@ -1,0 +1,16 @@
+%
+(G2/G3 arc simulation test)
+G21
+G90
+G17
+G0 Z5
+M3 S12000
+G0 X10 Y0
+G1 Z-1 F100
+G2 X-10 Y0 I-10 J0 F300
+G2 X10 Y0 I10 J0
+G0 Z5
+M5
+G0 X0 Y0
+M30
+%
