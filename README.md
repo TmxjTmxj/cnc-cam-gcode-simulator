@@ -7,7 +7,7 @@
 
 一个工程风格的 **CNC CAM 与 G代码仿真分析桌面软件**:导入 DXF 图纸,一键生成 Fanuc 风格 G代码,并在 2D / 3D 视图中仿真加工过程,同时支持铣削与车削两种加工模式。
 
-![milling_workflow](docs/screenshots/milling_workflow.png)
+![overview](docs/screenshots/overview.png)
 
 ## ✨ 功能特性
 
