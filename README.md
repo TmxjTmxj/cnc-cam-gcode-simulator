@@ -38,7 +38,7 @@
 - **工业风格 UI**:深色主色调、参数分组面板、实时状态栏、中文界面
 - **打包支持**:一键生成 Windows 可执行文件
 
-![3d_validation](docs/screenshots/3d_validation.png)
+![3d_milling](docs/screenshots/3d_milling.png)
 
 ## 🚀 快速开始
 
