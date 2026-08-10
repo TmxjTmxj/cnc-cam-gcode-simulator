@@ -43,7 +43,7 @@ class SimulationCanvasWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the plotting canvas and draw its initial coordinate system."""
         super().__init__(parent)
-        self._figure = Figure(figsize=(6, 4), dpi=100, facecolor="#f8fafc")
+        self._figure = Figure(figsize=(6, 4), dpi=100, facecolor="#F4F6F8")
         self._canvas = FigureCanvas(self._figure)
         self._canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._canvas.updateGeometry()
@@ -79,8 +79,8 @@ class SimulationCanvasWidget(QWidget):
         linear_segments = [segment for segment in result.segments if segment.move_type == "linear"]
         arc_segments = [segment for segment in result.segments if segment.move_type == "arc"]
 
-        self._draw_segments(rapid_segments, "#64748b", "--", "G0 快速移动", result.plane)
-        self._draw_segments(linear_segments, "#0f6bff", "-", "G1 切削路径", result.plane)
+        self._draw_segments(rapid_segments, "#808890", "--", "G0 快速移动", result.plane)
+        self._draw_segments(linear_segments, "#4682B4", "-", "G1 切削路径", result.plane)
         self._draw_arc_segments(arc_segments, result.plane)
         if is_turning:
             self._draw_turning_mirror(linear_segments, arc_segments)
@@ -150,8 +150,8 @@ class SimulationCanvasWidget(QWidget):
                 [plot_x],
                 [plot_y],
                 s=86,
-                color="#facc15",
-                edgecolors="#111827",
+                color="#B8860B",
+                edgecolors="#FFFFFF",
                 linewidths=1.2,
                 zorder=8,
                 label="Current tool",
@@ -162,8 +162,8 @@ class SimulationCanvasWidget(QWidget):
                 xytext=(8, 8),
                 textcoords="offset points",
                 fontsize=8,
-                color="#172033",
-                bbox={"boxstyle": "round,pad=0.25", "fc": "#fff7cc", "ec": "#d6a700", "alpha": 0.9},
+                color="#1A1E22",
+                bbox={"boxstyle": "round,pad=0.25", "fc": "#FFFFFF", "ec": "#B8860B", "alpha": 0.92},
                 zorder=9,
             )
         else:
@@ -188,29 +188,29 @@ class SimulationCanvasWidget(QWidget):
         self._axis.clear()
         self._axis.set_axis_on()
         self._figure.subplots_adjust(**PLOT_LAYOUT)
-        self._axis.set_facecolor("#f4f7fa")
-        self._axis.set_title(title, pad=8, fontsize=12, fontweight="bold", color="#172033")
+        self._axis.set_facecolor("#FFFFFF")
+        self._axis.set_title(title, pad=8, fontsize=12, fontweight="bold", color="#1A1E22")
         self._axis.set_xlabel(x_label)
         self._axis.set_ylabel(y_label)
         self._axis.set_aspect("auto")
-        self._axis.grid(True, which="major", linestyle="-", linewidth=0.78, color="#c4ceda", alpha=0.82)
+        self._axis.grid(True, which="major", linestyle="-", linewidth=0.6, color="#C8CED4", alpha=0.9)
         self._axis.minorticks_on()
-        self._axis.grid(True, which="minor", linestyle=":", linewidth=0.45, color="#d7dee8", alpha=0.72)
-        self._axis.axhline(0, color="#4b5f77", linewidth=1.05)
-        self._axis.axvline(0, color="#4b5f77", linewidth=1.05)
-        self._axis.tick_params(colors="#45566d", labelsize=9)
-        self._axis.xaxis.label.set_color("#314159")
-        self._axis.yaxis.label.set_color("#314159")
+        self._axis.grid(True, which="minor", linestyle=":", linewidth=0.4, color="#DDE1E5", alpha=0.8)
+        self._axis.axhline(0, color="#808890", linewidth=1.0)
+        self._axis.axvline(0, color="#808890", linewidth=1.0)
+        self._axis.tick_params(colors="#7A828A", labelsize=9)
+        self._axis.xaxis.label.set_color("#4A5058")
+        self._axis.yaxis.label.set_color("#4A5058")
         for spine in self._axis.spines.values():
-            spine.set_color("#98a7b8")
-            spine.set_linewidth(0.9)
+            spine.set_color("#B0B8C0")
+            spine.set_linewidth(0.8)
 
     def _prepare_welcome_surface(self) -> None:
         """Show a quiet blank plotting surface behind the Qt welcome card."""
         self._axis.clear()
         self._figure.subplots_adjust(**WELCOME_LAYOUT)
-        self._figure.set_facecolor("#f8fafc")
-        self._axis.set_facecolor("#f8fafc")
+        self._figure.set_facecolor("#F4F6F8")
+        self._axis.set_facecolor("#F4F6F8")
         self._axis.set_axis_off()
         self._axis.set_xlim(0, 1)
         self._axis.set_ylim(0, 1)
@@ -221,11 +221,12 @@ class SimulationCanvasWidget(QWidget):
         self._axis.legend(
             loc="upper right",
             borderaxespad=0.35,
-            framealpha=0.86,
+            framealpha=0.88,
             fancybox=True,
-            edgecolor="#b8c3d1",
-            facecolor="#ffffff",
+            edgecolor="#B0B8C0",
+            facecolor="#FFFFFF",
             fontsize=8,
+            labelcolor="#1A1E22",
         )
 
     def _build_welcome_card(self) -> None:
@@ -235,7 +236,7 @@ class SimulationCanvasWidget(QWidget):
         shadow = QGraphicsDropShadowEffect(self._welcome_card)
         shadow.setBlurRadius(28)
         shadow.setOffset(0, 10)
-        shadow.setColor(QColor(15, 23, 42, 28))
+        shadow.setColor(QColor(70, 130, 180, 35))
         self._welcome_card.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(self._welcome_card)
@@ -397,7 +398,7 @@ class SimulationCanvasWidget(QWidget):
         ]
         self._add_line_collection(
             line_segments,
-            color="#f97316",
+            color="#CC6600",
             linestyle="-",
             linewidth=2.25,
             alpha=alpha,
@@ -412,7 +413,7 @@ class SimulationCanvasWidget(QWidget):
         """Mirror turning cut geometry about the spindle centerline."""
         self._draw_segments(
             linear_segments,
-            "#0f6bff",
+            "#4682B4",
             "-",
             "回转体镜像",
             "XZ",
@@ -435,8 +436,8 @@ class SimulationCanvasWidget(QWidget):
             first_x,
             first_y,
             s=72,
-            color="#22c55e",
-            edgecolors="#ffffff",
+            color="#3D8B37",
+            edgecolors="#FFFFFF",
             linewidths=1.4,
             zorder=5,
             label="起点",
@@ -445,8 +446,8 @@ class SimulationCanvasWidget(QWidget):
             last_x,
             last_y,
             s=78,
-            color="#ef4444",
-            edgecolors="#ffffff",
+            color="#C0392B",
+            edgecolors="#FFFFFF",
             linewidths=1.4,
             zorder=5,
             label="终点",

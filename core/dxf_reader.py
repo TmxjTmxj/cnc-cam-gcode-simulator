@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from math import cos, radians, sin
 from pathlib import Path
@@ -10,9 +11,10 @@ from typing import Iterable
 import ezdxf
 from ezdxf import DXFError
 
+from core.constants import ALL_LAYERS_LABEL, SPLINE_SAMPLE_COUNT
 
-SPLINE_SAMPLE_COUNT = 48
-ALL_LAYERS_LABEL = "\u5168\u90e8\u56fe\u5c42"
+# 保留模块级名称以便向后兼容
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -103,10 +105,10 @@ class DxfReadResult:
     def summary(self) -> str:
         """Return a compact Chinese summary for the status bar."""
         return (
-            f"LINE {len(self.lines)} \u4e2a?"
-            f"CIRCLE {len(self.circles)} \u4e2a?"
-            f"ARC {len(self.arcs)} \u4e2a?"
-            f"POLYLINE {len(self.polylines)} \u4e2a"
+            f"LINE {len(self.lines)} 个，"
+            f"CIRCLE {len(self.circles)} 个，"
+            f"ARC {len(self.arcs)} 个，"
+            f"POLYLINE {len(self.polylines)} 个"
         )
 
     def _bounds_points(self) -> list[tuple[float, float]]:
@@ -157,7 +159,8 @@ class DxfReader:
         try:
             document = ezdxf.readfile(path)
         except (OSError, IOError, DXFError) as exc:
-            raise ValueError(f"\u65e0\u6cd5\u8bfb\u53d6DXF\u6587\u4ef6?{exc}") from exc
+            logger.error("无法读取 DXF 文件 %s: %s", path, exc)
+            raise ValueError(f"无法读取 DXF 文件：{exc}") from exc
 
         lines: list[DxfLine] = []
         circles: list[DxfCircle] = []
@@ -181,7 +184,8 @@ class DxfReader:
                 elif dxftype == "SPLINE":
                     polylines.append(self._read_spline(entity))
             except (AttributeError, TypeError, ValueError) as exc:
-                warnings.append(f"{dxftype} \u56fe\u5143\u8bfb\u53d6\u5931\u8d25?{exc}")
+                warnings.append(f"{dxftype} 图元读取失败：{exc}")
+                logger.warning("%s 图元读取失败: %s", dxftype, exc)
 
         return DxfReadResult(
             lines=lines,
@@ -204,7 +208,8 @@ class DxfReader:
                                 virtual.dxf.layer = insert_layer
                             yield virtual
                 except (DXFError, AttributeError, TypeError, ValueError) as exc:
-                    warnings.append(f"INSERT \u5757\u5f15\u7528\u5c55\u5f00\u5931\u8d25?{exc}")
+                    warnings.append(f"INSERT 块引用展开失败：{exc}")
+                    logger.warning("INSERT 块引用展开失败: %s", exc)
                 continue
             if self._is_supported_type(dxftype):
                 yield entity

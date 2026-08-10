@@ -126,6 +126,61 @@ def test_runner_uses_segment_positions() -> None:
     assert runner._segment_start_times == sorted(runner._segment_start_times)
 
 
+def test_empty_runner_play_does_not_enter_playing_state() -> None:
+    """空 runner 调用 play() 不应进入 playing 状态。"""
+    runner = SimulationRunner()
+    runner.play()
+    assert not runner.is_playing()
+    assert runner.total_duration() == 0.0
+
+
+def test_clear_then_play_keeps_runner_idle() -> None:
+    """load 后 clear 再 play，runner 应保持非播放状态且无残留数据。"""
+    parsed = GCodeParser().parse("G0 X0 Y0 Z5\nG1 X10 F300\n")
+    result = GCodeSimulator().simulate(parsed, plane="XY")
+    runner = SimulationRunner()
+    runner.load(parsed, result)
+    assert runner.total_duration() > 0.0
+
+    runner.clear()
+    assert runner.total_duration() == 0.0
+    assert runner.get_real_positions() == []
+
+    runner.play()
+    assert not runner.is_playing()
+
+
+def test_start_simulation_with_no_motion_clears_old_runner() -> None:
+    """先跑有效 G代码，再输入只有设置指令的内容，runner 应被彻底清空。"""
+    window = MainWindow()
+    window.editor.set_text("G17\nG0 X0 Y0 Z5\nG1 X10 F300\n")
+    window._start_simulation()
+    assert window.simulation_runner.total_duration() > 0.0
+
+    # 只有设置指令，无运动指令
+    window.editor.set_text("G21\nG90\nM3\n")
+    window._start_simulation()
+    assert window.simulation_runner.total_duration() == 0.0
+    assert not window.simulation_runner.is_playing()
+    assert window.simulation_runner.get_real_positions() == []
+    window.close()
+
+
+def test_start_simulation_with_empty_editor_clears_old_runner() -> None:
+    """先跑有效 G代码，再清空编辑器点开始仿真，runner 应被彻底清空。"""
+    window = MainWindow()
+    window.editor.set_text("G17\nG0 X0 Y0 Z5\nG1 X10 F300\n")
+    window._start_simulation()
+    assert window.simulation_runner.total_duration() > 0.0
+
+    window.editor.set_text("")
+    window._start_simulation()
+    assert window.simulation_runner.total_duration() == 0.0
+    assert not window.simulation_runner.is_playing()
+    assert window.simulation_runner.get_real_positions() == []
+    window.close()
+
+
 def test_simulation_summary_uses_runner_duration() -> None:
     window = MainWindow()
     window.editor.set_text("G17\nG0 X0 Y0 Z5\nG1 X600 Y0 Z-1 F60\n")
@@ -273,7 +328,8 @@ def test_project_tree_and_operation_table_use_real_data() -> None:
 
 
 def test_demo_image_candidates_stay_under_assets() -> None:
-    assert IMAGE_CANDIDATES == (Path("assets/demo.png"),)
+    assert IMAGE_CANDIDATES[0] == Path("assets/武陆逊.png")
+    assert all(p.parts[0] == "assets" for p in IMAGE_CANDIDATES)
 
 
 def test_main_window_milling_and_turning_modes() -> None:
@@ -422,6 +478,61 @@ def test_turning_surface_profile_is_densified_for_continuous_mesh() -> None:
     window.close()
 
 
+
+def test_3d_mesh_defaults_to_translucent_stock_style() -> None:
+    window = MainWindow()
+    assert 0.35 <= window.gl_canvas._mesh_opacity <= 0.65
+    window.close()
+
+def test_3d_swept_mesh_connects_adjacent_sections_with_triangles() -> None:
+    window = MainWindow()
+    vertices, faces = window.gl_canvas._build_swept_circular_mesh(
+        [(0.0, 0.0, 0.0), (0.0, 0.0, 10.0)],
+        radius=1.0,
+        section_count=3,
+        circle_segments=4,
+        cap_ends=False,
+    )
+
+    assert vertices.shape == (12, 3)
+    assert faces.shape == (16, 3)
+    assert faces[0].tolist() == [0, 1, 5]
+    assert faces[1].tolist() == [0, 5, 4]
+    assert faces[6].tolist() == [3, 0, 4]
+    assert faces[7].tolist() == [3, 4, 7]
+    window.close()
+
+def test_3d_mesh_renderer_does_not_use_trisurf_for_closed_mesh() -> None:
+    window = MainWindow()
+    vertices, faces = window.gl_canvas._build_swept_circular_mesh(
+        [(0.0, 0.0, 0.0), (0.0, 0.0, 10.0)],
+        radius=1.0,
+        section_count=3,
+        circle_segments=8,
+        cap_ends=True,
+    )
+
+    def fail_trisurf(*_args, **_kwargs):
+        raise AssertionError("closed mesh should be rendered from explicit face polygons")
+
+    window.gl_canvas._axis.plot_trisurf = fail_trisurf
+    window.gl_canvas._plot_triangle_mesh(
+        vertices,
+        faces,
+        color="#22c55e",
+        opacity=1.0,
+        show_edges=False,
+    )
+
+    assert any(type(collection).__name__ == "Poly3DCollection" for collection in window.gl_canvas._axis.collections)
+    window.close()
+
+def test_parameter_forms_wrap_rows_to_avoid_narrow_panel_overlap() -> None:
+    window = MainWindow()
+    assert window.control_panel.cutter_compensation_input.property("formRowWrap") is True
+    assert window.control_panel.cutter_compensation_input.minimumWidth() <= 150
+    window.close()
+
 def test_timeline_speed_slider_updates_runner_speed() -> None:
     window = MainWindow()
     slider = window.timeline_panel.speed_slider
@@ -562,6 +673,10 @@ def main() -> None:
         test_ijk_full_circle_without_endpoint_is_valid,
         test_turning_arc_i_uses_radius_coordinate,
         test_runner_uses_segment_positions,
+        test_empty_runner_play_does_not_enter_playing_state,
+        test_clear_then_play_keeps_runner_idle,
+        test_start_simulation_with_no_motion_clears_old_runner,
+        test_start_simulation_with_empty_editor_clears_old_runner,
         test_simulation_summary_uses_runner_duration,
         test_build_script_uses_portable_python_launcher,
         test_read_text_with_fallback_handles_chinese_windows_files,
@@ -582,6 +697,10 @@ def main() -> None:
         test_ui_mode_overrides_embedded_plane_codes,
         test_milling_shallow_cut_is_counted_as_cutting_path,
         test_turning_surface_profile_is_densified_for_continuous_mesh,
+        test_3d_mesh_defaults_to_translucent_stock_style,
+        test_3d_swept_mesh_connects_adjacent_sections_with_triangles,
+        test_3d_mesh_renderer_does_not_use_trisurf_for_closed_mesh,
+        test_parameter_forms_wrap_rows_to_avoid_narrow_panel_overlap,
         test_timeline_speed_slider_updates_runner_speed,
         test_generate_gcode_does_not_start_simulation,
         test_speed_title_is_readable_text,

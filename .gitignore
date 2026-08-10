@@ -1,8 +1,36 @@
+# --- Python ---
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Build artifacts ---
 build/
 dist/
-*.egg-info/
+*.spec.bak
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Local runtime data ---
 .runtime-cache/
+.uploads/
+
+# --- Private / development notes (not published) ---
+# 个人开发过程文档、作业设计文档、概念设计与测试数据,
+# 保留在本地但不随仓库发布。
+AGENTS.md
+TASK.md
+优化文档.md
+前端功能迁移台账.md
+开发流程.md
+展示.html
+说明文档.txt
+测试dxf/
+cnc-cam-ui-concept/

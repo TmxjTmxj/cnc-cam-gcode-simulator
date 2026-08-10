@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from math import atan2, cos, hypot, pi, sin, sqrt
 
+from core.constants import ARC_RADIUS_TOLERANCE
 from core.gcode_parser import GCodeCommand, GCodeParseResult
 
-ARC_RADIUS_TOLERANCE = 0.05
+# 保留模块级名称以便向后兼容
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -90,10 +93,12 @@ class GCodeSimulator:
                 if arc_segment is not None:
                     if arc_segment.warning:
                         warnings.append(arc_segment.warning)
+                        logger.warning("仿真告警: %s", arc_segment.warning)
                     segments.append(arc_segment)
                 elif self._has_plane_motion(position, next_position, normalized_plane):
                     warning = f"Line {command.line_number}: invalid arc, rendered as linear move"
                     warnings.append(warning)
+                    logger.warning("仿真告警: %s", warning)
                     segments.append(self._linear_segment(position, next_position, command, normalized_plane, warning))
             elif self._has_plane_motion(position, next_position, normalized_plane):
                 segments.append(self._linear_segment(position, next_position, command, normalized_plane))

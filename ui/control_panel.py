@@ -57,11 +57,6 @@ class ControlPanelWidget(QWidget):
         self.layer_filter_input.blockSignals(True)
         self.layer_filter_input.clear()
         self.layer_filter_input.addItems(values)
-
-        self.cutter_compensation_input = QComboBox(self)
-        self.cutter_compensation_input.addItem("\u65e0\u8865\u507f", "none")
-        self.cutter_compensation_input.addItem("\u5de6\u8865\u507f", "left")
-        self.cutter_compensation_input.addItem("\u53f3\u8865\u507f", "right")
         self.layer_filter_input.setCurrentText(current if current in values else ALL_LAYERS_LABEL)
         self.layer_filter_input.blockSignals(False)
 
@@ -131,10 +126,11 @@ class ControlPanelWidget(QWidget):
             self.layer_filter_input,
             self.cutter_compensation_input,
         ):
-            widget.setMinimumWidth(170)
+            widget.setMinimumWidth(140)
             widget.setMinimumHeight(24)
             widget.setMaximumHeight(26)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            widget.setProperty("formRowWrap", True)
         self.zero_origin_input.setMinimumHeight(24)
         self.zero_origin_input.setMaximumHeight(26)
 
@@ -207,6 +203,7 @@ class ControlPanelWidget(QWidget):
         group = QGroupBox("工程策略", self)
         layout = self._form_layout(group)
         self._add_form_row(layout, "轮廓方向", self.contour_direction_input)
+        self._add_form_row(layout, "刀具补偿", self.cutter_compensation_input)
         self._add_form_row(layout, "坐标归零", self.zero_origin_input)
         self._add_form_row(layout, "圆弧输出", self.arc_output_input)
         self._add_form_row(layout, "图层选择", self.layer_filter_input)
@@ -267,5 +264,6 @@ class ControlPanelWidget(QWidget):
         """Add one consistent label/control row to a parameter form."""
         label = QLabel(label_text, self)
         label.setObjectName("formLabel")
-        label.setMinimumWidth(80)
+        label.setMinimumWidth(72)
+        label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         layout.addRow(label, widget)

@@ -1,9 +1,9 @@
 """Matplotlib based 3D machining simulation canvas.
 
-The widget intentionally keeps the historical GLCanvasWidget API used by
-MainWindow, but renders with matplotlib for reliable cross-machine behavior.
-It shows stock, approximate material removal, cutter geometry, rapid/cut paths,
+Renders stock, approximate material removal, cutter geometry, rapid/cut paths,
 and supports mouse rotate/zoom/pan through the built-in navigation toolbar.
+Previously named ``GLCanvasWidget``; renamed to ``Simulation3DCanvasWidget``
+to reflect that no OpenGL is used (matplotlib 3D projection only).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 @dataclass(frozen=True)
@@ -39,11 +40,13 @@ class _Bounds:
         )
 
 
-class GLCanvasWidget(QWidget):
+class Simulation3DCanvasWidget(QWidget):
     """3D stock, cutter, toolpath, and in-process-part visualization widget."""
 
     _MAX_STOCK_GRID = 58
     _MAX_REMOVAL_SAMPLES = 260
+    _MIN_SWEEP_SECTIONS = 100
+    _DEFAULT_CIRCLE_SEGMENTS = 48
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -76,6 +79,10 @@ class GLCanvasWidget(QWidget):
         self._is_turning = False
         self._tool_diameter = 6.0
         self._stock_top_z = 0.0
+        self._section_count = 160
+        self._circle_segments = self._DEFAULT_CIRCLE_SEGMENTS
+        self._mesh_opacity = 0.46
+        self._mesh_show_edges = False
 
         self._bounds = _Bounds(-50.0, 50.0, -50.0, 50.0, -5.0, 5.0)
         self._view_elev = 26.0
@@ -295,13 +302,28 @@ class GLCanvasWidget(QWidget):
     def _draw_milling_cut_floor(self, cut_points: list[tuple[float, float, float]]) -> None:
         if len(cut_points) < 2:
             return
+        tool_radius = max(self._tool_diameter * 0.5, self._bounds.span * 0.025)
+        vertices, faces = self._build_swept_circular_mesh(
+            cut_points,
+            radius=tool_radius,
+            section_count=max(self._MIN_SWEEP_SECTIONS, self._section_count),
+            circle_segments=self._circle_segments,
+            cap_ends=True,
+        )
+        self._plot_triangle_mesh(
+            vertices,
+            faces,
+            color="#22c55e",
+            opacity=self._mesh_opacity,
+            show_edges=self._mesh_show_edges,
+        )
         self._axis.plot(
             [p[0] for p in cut_points],
             [p[1] for p in cut_points],
             [p[2] for p in cut_points],
-            color="#22c55e",
-            alpha=0.70,
-            linewidth=3.2,
+            color="#064e3b",
+            alpha=0.92,
+            linewidth=1.4,
         )
 
     def _draw_milling_toolpath(self) -> None:
@@ -332,20 +354,18 @@ class GLCanvasWidget(QWidget):
 
     def _draw_turning_part(self) -> None:
         profile_z, r_profile = self._turning_surface_profile()
-        theta = np.linspace(0, 2 * math.pi, 56)
-        zz, tt = np.meshgrid(profile_z, theta)
-        rr = np.interp(zz, profile_z, r_profile)
-        yy = rr * np.cos(tt)
-        xx_radius = rr * np.sin(tt)
-        self._axis.plot_surface(
-            zz,
-            yy,
-            xx_radius,
+        vertices, faces = self._build_revolved_profile_mesh(
+            profile_z,
+            r_profile,
+            circle_segments=self._circle_segments,
+            cap_ends=True,
+        )
+        self._plot_triangle_mesh(
+            vertices,
+            faces,
             color="#6aa2ff",
-            alpha=0.44,
-            linewidth=0,
-            antialiased=True,
-            shade=True,
+            opacity=self._mesh_opacity,
+            show_edges=self._mesh_show_edges,
         )
         self._axis.plot(profile_z, np.zeros_like(profile_z), r_profile, color="#22c55e", linewidth=2.8, alpha=0.85)
         self._axis.plot(profile_z, np.zeros_like(profile_z), -r_profile, color="#22c55e", linewidth=1.6, alpha=0.45)
@@ -424,12 +444,191 @@ class GLCanvasWidget(QWidget):
         self._axis.plot([px + size, px], [py, py], [pz + size * 0.35, pz], color="#e5e7eb", linewidth=3.0, alpha=0.95)
 
     def _draw_cylinder_z(self, cx: float, cy: float, z0: float, z1: float, radius: float, color: str, alpha: float) -> None:
-        theta = np.linspace(0, 2 * math.pi, 22)
-        z = np.linspace(z0, z1, 2)
-        tt, zz = np.meshgrid(theta, z)
-        xx = cx + radius * np.cos(tt)
-        yy = cy + radius * np.sin(tt)
-        self._axis.plot_surface(xx, yy, zz, color=color, alpha=alpha, linewidth=0, shade=True)
+        vertices, faces = self._build_swept_circular_mesh(
+            [(cx, cy, z0), (cx, cy, z1)],
+            radius=radius,
+            section_count=2,
+            circle_segments=max(24, self._circle_segments // 2),
+            cap_ends=True,
+        )
+        self._plot_triangle_mesh(vertices, faces, color=color, opacity=alpha, show_edges=False)
+
+    def _plot_triangle_mesh(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        *,
+        color: str,
+        opacity: float,
+        show_edges: bool,
+    ) -> None:
+        """Render one complete closed triangle mesh from explicit face polygons."""
+        if len(vertices) == 0 or len(faces) == 0:
+            return
+        polygons = vertices[faces]
+        linewidth = 0.25 if show_edges else 0.0
+        edgecolor = "#dbeafe" if show_edges else "none"
+        mesh = Poly3DCollection(
+            polygons,
+            facecolor=color,
+            edgecolor=edgecolor,
+            linewidth=linewidth,
+            alpha=max(0.0, min(1.0, opacity)),
+            antialiaseds=True,
+        )
+        self._axis.add_collection3d(mesh)
+
+    def _build_revolved_profile_mesh(
+        self,
+        profile_z: np.ndarray,
+        radii: np.ndarray,
+        *,
+        circle_segments: int,
+        cap_ends: bool,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Build a spindle-axis revolution mesh from an axial radius profile."""
+        z_values = np.asarray(profile_z, dtype=float)
+        r_values = np.maximum(np.asarray(radii, dtype=float), 0.0)
+        if len(z_values) < 2 or len(z_values) != len(r_values):
+            return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=int)
+
+        m = max(3, int(circle_segments))
+        theta = np.linspace(0.0, 2.0 * math.pi, m, endpoint=False)
+        vertices: list[tuple[float, float, float]] = []
+        for z_value, radius in zip(z_values, r_values):
+            for angle in theta:
+                vertices.append((float(z_value), float(radius * math.cos(angle)), float(radius * math.sin(angle))))
+
+        faces = self._connect_section_faces(len(z_values), m)
+        if cap_ends:
+            start_center = len(vertices)
+            vertices.append((float(z_values[0]), 0.0, 0.0))
+            faces.extend(self._cap_section_faces(start_center, 0, m, reverse=True))
+            end_center = len(vertices)
+            vertices.append((float(z_values[-1]), 0.0, 0.0))
+            faces.extend(self._cap_section_faces(end_center, len(z_values) - 1, m, reverse=False))
+        return np.array(vertices, dtype=float), np.array(faces, dtype=int)
+
+    def _build_swept_circular_mesh(
+        self,
+        path: list[tuple[float, float, float]],
+        *,
+        radius: float,
+        section_count: int,
+        circle_segments: int,
+        cap_ends: bool,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Build a continuous circular sweep mesh along a 3D path."""
+        points = self._resample_path_by_length(path, max(2, int(section_count)))
+        if len(points) < 2 or radius <= 0.0:
+            return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=int)
+
+        m = max(3, int(circle_segments))
+        tangents = self._path_tangents(points)
+        normal = self._initial_normal(tangents[0])
+        vertices: list[tuple[float, float, float]] = []
+        for center, tangent in zip(points, tangents):
+            projected = normal - tangent * float(np.dot(normal, tangent))
+            norm = float(np.linalg.norm(projected))
+            normal = projected / norm if norm > 1e-9 else self._initial_normal(tangent)
+            binormal = np.cross(tangent, normal)
+            binormal_norm = float(np.linalg.norm(binormal))
+            if binormal_norm <= 1e-9:
+                binormal = self._initial_normal(tangent)
+            else:
+                binormal = binormal / binormal_norm
+            for index in range(m):
+                angle = 2.0 * math.pi * index / m
+                offset = radius * (math.cos(angle) * normal + math.sin(angle) * binormal)
+                point = center + offset
+                vertices.append((float(point[0]), float(point[1]), float(point[2])))
+
+        faces = self._connect_section_faces(len(points), m)
+        if cap_ends:
+            start_center = len(vertices)
+            vertices.append(tuple(map(float, points[0])))
+            faces.extend(self._cap_section_faces(start_center, 0, m, reverse=True))
+            end_center = len(vertices)
+            vertices.append(tuple(map(float, points[-1])))
+            faces.extend(self._cap_section_faces(end_center, len(points) - 1, m, reverse=False))
+        return np.array(vertices, dtype=float), np.array(faces, dtype=int)
+
+    @staticmethod
+    def _connect_section_faces(section_count: int, circle_segments: int) -> list[list[int]]:
+        faces: list[list[int]] = []
+        m = circle_segments
+        for section_index in range(section_count - 1):
+            for point_index in range(m):
+                a = section_index * m + point_index
+                b = section_index * m + (point_index + 1) % m
+                c = (section_index + 1) * m + (point_index + 1) % m
+                d = (section_index + 1) * m + point_index
+                faces.append([a, b, c])
+                faces.append([a, c, d])
+        return faces
+
+    @staticmethod
+    def _cap_section_faces(center_index: int, section_index: int, circle_segments: int, *, reverse: bool) -> list[list[int]]:
+        start = section_index * circle_segments
+        faces: list[list[int]] = []
+        for point_index in range(circle_segments):
+            a = start + point_index
+            b = start + (point_index + 1) % circle_segments
+            faces.append([center_index, b, a] if reverse else [center_index, a, b])
+        return faces
+
+    @staticmethod
+    def _resample_path_by_length(path: list[tuple[float, float, float]], section_count: int) -> list[np.ndarray]:
+        raw_points = [np.array(point, dtype=float) for point in path]
+        if len(raw_points) < 2:
+            return raw_points
+
+        filtered = [raw_points[0]]
+        for point in raw_points[1:]:
+            if float(np.linalg.norm(point - filtered[-1])) > 1e-9:
+                filtered.append(point)
+        if len(filtered) < 2:
+            return filtered
+
+        distances = [0.0]
+        for previous, current in zip(filtered, filtered[1:]):
+            distances.append(distances[-1] + float(np.linalg.norm(current - previous)))
+        total = distances[-1]
+        count = max(2, min(max(section_count, 2), 520))
+        targets = np.linspace(0.0, total, count)
+        result: list[np.ndarray] = []
+        segment_index = 0
+        for target in targets:
+            while segment_index < len(distances) - 2 and distances[segment_index + 1] < target:
+                segment_index += 1
+            start_distance = distances[segment_index]
+            end_distance = distances[segment_index + 1]
+            ratio = 0.0 if end_distance <= start_distance else (target - start_distance) / (end_distance - start_distance)
+            result.append(filtered[segment_index] * (1.0 - ratio) + filtered[segment_index + 1] * ratio)
+        return result
+
+    @staticmethod
+    def _path_tangents(points: list[np.ndarray]) -> list[np.ndarray]:
+        tangents: list[np.ndarray] = []
+        for index in range(len(points)):
+            if index == 0:
+                vector = points[1] - points[0]
+            elif index == len(points) - 1:
+                vector = points[-1] - points[-2]
+            else:
+                vector = points[index + 1] - points[index - 1]
+            norm = float(np.linalg.norm(vector))
+            tangents.append(vector / norm if norm > 1e-9 else np.array([0.0, 0.0, 1.0], dtype=float))
+        return tangents
+
+    @staticmethod
+    def _initial_normal(tangent: np.ndarray) -> np.ndarray:
+        reference = np.array([0.0, 0.0, 1.0], dtype=float)
+        if abs(float(np.dot(reference, tangent))) > 0.92:
+            reference = np.array([0.0, 1.0, 0.0], dtype=float)
+        normal = np.cross(reference, tangent)
+        norm = float(np.linalg.norm(normal))
+        return normal / norm if norm > 1e-9 else np.array([1.0, 0.0, 0.0], dtype=float)
 
     def _current_cut_machine_path(self, *, cutting_only: bool) -> list[tuple[float, float, float]]:
         path = self._real_path

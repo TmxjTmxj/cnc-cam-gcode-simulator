@@ -17,13 +17,13 @@ from dataclasses import dataclass, field
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from core.constants import DEFAULT_RAPID_SPEED, MIN_LINEAR_SAMPLES
 from core.gcode_parser import GCodeCommand, GCodeParseResult
+from core.machine_state import MachineState
 from core.simulator import SimulationResult, ToolpathSegment
 
-DEFAULT_RAPID_SPEED: float = 50000.0
 DEFAULT_FEED_SPEED: float = 3000.0
 TIMER_INTERVAL_MS: int = 33
-MIN_LINEAR_SAMPLES: int = 20
 
 
 @dataclass
@@ -105,6 +105,8 @@ class SimulationRunner(QObject):
         real_positions: list[tuple[float, float, float]] = []
         segment_start_times: list[float] = []
         total_duration = 0.0
+        # 模态 F 进给速度：当前行指定 F 就更新，后续行继承
+        modal_feed: float | None = None
 
         for seg_idx, toolpath_seg in enumerate(simulation_result.segments):
             cmd = getattr(toolpath_seg, "command", None)
@@ -124,7 +126,10 @@ class SimulationRunner(QObject):
                 end_machine,
                 simulation_result.plane,
             )
-            duration = self._calculate_duration(toolpath_seg, cmd)
+            # 模态 F 继承：当前行指定 F 就更新模态值
+            if cmd is not None and cmd.f is not None and cmd.f > 0:
+                modal_feed = cmd.f
+            duration = self._calculate_duration(toolpath_seg, cmd, modal_feed)
             segment_start_times.append(total_duration)
 
             for pt in points:
@@ -169,6 +174,9 @@ class SimulationRunner(QObject):
 
     def play(self) -> None:
         """Start or resume playback."""
+        # 空数据保护：没有 segments 时拒绝进入 playing 状态
+        if not self._segments:
+            return
         if self._state == "finished":
             self._current_segment_index = 0
             self._current_point_index = 0
@@ -189,6 +197,26 @@ class SimulationRunner(QObject):
         """Stop and reset to beginning."""
         self._timer.stop()
         self._state = "idle"
+        self._current_segment_index = 0
+        self._current_point_index = 0
+        self._elapsed_time = 0.0
+        self.state_changed.emit("idle")
+        self.progress_changed.emit(0.0)
+        self._emit_initial_position()
+
+    def clear(self) -> None:
+        """Drop all loaded simulation data and reset playback state.
+
+        与 ``stop()``（仅重置播放索引、保留 segments 供重播）不同，
+        本方法彻底清空 segments / real_positions / total_duration，
+        用于编辑器清空或无有效 G代码等需要废弃旧仿真的场景。
+        """
+        self._timer.stop()
+        self._state = "idle"
+        self._segments = []
+        self._real_positions = []
+        self._segment_start_times = []
+        self._total_duration = 0.0
         self._current_segment_index = 0
         self._current_point_index = 0
         self._elapsed_time = 0.0
@@ -341,16 +369,23 @@ class SimulationRunner(QObject):
         return start + (end - start) * ratio
 
     def _calculate_duration(
-        self, toolpath_seg: ToolpathSegment, command: GCodeCommand | None
+        self,
+        toolpath_seg: ToolpathSegment,
+        command: GCodeCommand | None,
+        modal_feed: float | None = None,
     ) -> float:
-        """Compute segment duration in seconds from length and feed rate."""
+        """Compute segment duration in seconds from length and feed rate.
+
+        修复：F 进给速度模态继承 —— 当前行未指定 F 时使用 ``modal_feed``
+        而非直接回退到默认值。
+        """
         seg_len = toolpath_seg.length
         if seg_len <= 0:
             return 0.0
         if toolpath_seg.move_type == "rapid":
             feed = DEFAULT_RAPID_SPEED
-        elif command is not None and command.f is not None and command.f > 0:
-            feed = command.f
+        elif modal_feed is not None and modal_feed > 0:
+            feed = modal_feed
         else:
             feed = DEFAULT_FEED_SPEED
         return seg_len / feed * 60.0
@@ -481,28 +516,6 @@ class SimulationRunner(QObject):
         return f"{h:02d}:{m:02d}:{sec:02d}"
 
 
-class _MachinePos:
-    """Track modal machine position by applying GCodeCommand coordinates."""
-
-    __slots__ = ("x", "y", "z")
-
-    def __init__(self, x: float, y: float, z: float) -> None:
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def advance(self, cmd: GCodeCommand | None) -> _MachinePos:
-        """Return next position, inheriting omitted axes from current state."""
-        if cmd is None:
-            return _MachinePos(self.x, self.y, self.z)
-        if cmd.distance_mode == "incremental":
-            return _MachinePos(
-                x=self.x + (cmd.x or 0.0),
-                y=self.y + (cmd.y or 0.0),
-                z=self.z + (cmd.z or 0.0),
-            )
-        return _MachinePos(
-            x=cmd.x if cmd.x is not None else self.x,
-            y=cmd.y if cmd.y is not None else self.y,
-            z=cmd.z if cmd.z is not None else self.z,
-        )
+# 向后兼容别名：原 _MachinePos 实现已抽到 core/machine_state.MachineState，
+# 保留名称以便模块内部类型注解和未来测试兼容。
+_MachinePos = MachineState

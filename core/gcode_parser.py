@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_COMMANDS = {
     "G0",
@@ -98,6 +101,7 @@ class GCodeParser:
             commands.append(command)
             if command.warning:
                 warnings.append(command.warning)
+                logger.warning("G代码解析告警: %s", command.warning)
 
         return GCodeParseResult(
             commands=commands,
@@ -113,15 +117,25 @@ class GCodeParser:
         command_words, parameters = self._extract_words(line_number, cleaned_line, warning_parts)
         command = self._select_command(command_words, parameters)
 
-        if command == "G90":
-            self._distance_mode = "absolute"
-        elif command == "G91":
-            self._distance_mode = "incremental"
+        # 处理同一行中所有设置类指令（例如 "G90 G0 X5" 中的 G90）
+        motion_words = [w for w in command_words if w in MOTION_COMMANDS]
+        if len(motion_words) > 1:
+            warning_parts.append(
+                f"第 {line_number} 行：同一行存在多个运动指令，仅取第一个 {motion_words[0]}"
+            )
+        for word in command_words:
+            if word == "G90":
+                self._distance_mode = "absolute"
+            elif word == "G91":
+                self._distance_mode = "incremental"
         if command in MOTION_COMMANDS:
             self._modal_motion_command = command
 
-        if command not in SUPPORTED_COMMANDS:
-            warning_parts.append(f"第 {line_number} 行：不支持或无法识别的指令")
+        # 检查所有指令是否受支持，而非仅选中的那个
+        for word in command_words:
+            if word not in SUPPORTED_COMMANDS:
+                warning_parts.append(f"第 {line_number} 行：不支持或无法识别的指令 {word}")
+                break
         if command in ARC_COMMANDS:
             self._validate_arc_command(line_number, parameters, warning_parts)
 
@@ -188,7 +202,15 @@ class GCodeParser:
         return command_words, parameters
 
     def _select_command(self, command_words: list[str], parameters: dict[str, float]) -> str:
-        """Select the explicit command or apply modal G0/G1 when appropriate."""
+        """Select the motion command if present, else first setting command, else modal.
+
+        同一行含多个 G 指令时（如 ``G90 G0 X5``），优先选择运动指令；
+        设置类指令（G90/G91/G21 等）由 ``_parse_line`` 遍历所有 command_words
+        单独处理模态状态，不依赖此处的返回值。
+        """
+        motion_words = [w for w in command_words if w in MOTION_COMMANDS]
+        if motion_words:
+            return motion_words[0]
         if command_words:
             return command_words[0]
         if parameters and self._modal_motion_command:

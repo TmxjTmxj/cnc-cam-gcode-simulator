@@ -26,12 +26,13 @@ from PySide6.QtWidgets import (
 from core.cam_generator import CamGenerator
 from core.dxf_reader import DxfReader, DxfReadResult
 from core.gcode_parser import GCodeParseResult, GCodeParser
+from core.resource_utils import read_text_with_fallback
 from core.simulator import GCodeSimulator, SimulationResult
 from ui.canvas_widget import SimulationCanvasWidget
 from ui.control_panel import ControlPanelWidget
 from ui.demo_effect import DemoEffectController
 from ui.editor_widget import GCodeEditorWidget
-from ui.gl_canvas_widget import GLCanvasWidget
+from ui.simulation_3d_canvas_widget import Simulation3DCanvasWidget
 from ui.simulation_info_dialog import SimulationInfoDialog
 from ui.simulation_runner import SimulationRunner
 from ui.style import APP_STYLE
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
         self.cam_generator = CamGenerator()
         self.demo_effects = DemoEffectController(self.canvas)
         # 3D 画布
-        self.gl_canvas = GLCanvasWidget(self)
+        self.gl_canvas = Simulation3DCanvasWidget(self)
         # 仿真控制器
         self.simulation_runner = SimulationRunner(self)
         self._simulation_speed = 1.0
@@ -77,6 +78,8 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         self._connect_signals()
         self._apply_style()
+        # 启动时铺满全屏，避免内容被遮挡
+        self.showMaximized()
 
     def _build_actions(self) -> None:
         """Create reusable actions for menus and future toolbars."""
@@ -157,7 +160,7 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
         toolbar.setIconSize(QSize(18, 18))
-        toolbar.setContentsMargins(8, 4, 8, 4)
+        toolbar.setContentsMargins(4, 4, 4, 4)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         toolbar.addWidget(self._toolbar_button(self.import_dxf_action, "secondaryToolButton"))
@@ -180,7 +183,8 @@ class MainWindow(QMainWindow):
         button.setDefaultAction(action)
         button.setObjectName(object_name)
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        button.setMinimumHeight(34)
+        button.setMinimumHeight(30)
+        button.setMinimumWidth(64)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         return button
 
@@ -413,6 +417,9 @@ class MainWindow(QMainWindow):
         """Parse editor G-code, simulate tool paths, and update the canvas."""
         self.pause_simulation_action.setText("暂停")
         if not self.editor.text().strip():
+            # 无内容时彻底清空旧仿真，确保 runner 不残留播放状态或旧路径
+            self.simulation_runner.clear()
+            self.gl_canvas.stop_animation()
             self.canvas.reset_view()
             self.gl_canvas.load_toolpath_3d([])
             self.control_panel.parse_status_label.setText("未解析")
@@ -429,6 +436,8 @@ class MainWindow(QMainWindow):
             )
         except (ValueError, RuntimeError) as exc:
             QMessageBox.warning(self, "仿真失败", f"仿真过程中发生错误：{exc}")
+            self.simulation_runner.clear()
+            self.gl_canvas.stop_animation()
             self.control_panel.parse_status_label.setText("失败")
             self.latest_simulation_info = None
             self._set_status("G代码仿真失败")
@@ -436,12 +445,18 @@ class MainWindow(QMainWindow):
 
         self._update_simulation_info(parse_result, simulation_result)
         if not parse_result.commands:
+            # 无有效命令时彻底清空旧仿真
+            self.simulation_runner.clear()
+            self.gl_canvas.stop_animation()
             self.canvas.reset_view()
             self.gl_canvas.load_toolpath_3d([])
             self.latest_simulation_info = None
             self._set_status("没有可仿真的G代码")
             return
         if parse_result.motion_count == 0:
+            # 只有设置指令（G21/G90/M3 等），清空旧仿真
+            self.simulation_runner.clear()
+            self.gl_canvas.stop_animation()
             self.canvas.reset_view()
             self.gl_canvas.load_toolpath_3d([])
             self.latest_simulation_info = None
@@ -574,10 +589,14 @@ class MainWindow(QMainWindow):
             self.simulation_runner.pause()
             self.gl_canvas.stop_animation()
             self.pause_simulation_action.setText("继续")
-        else:
-            self.simulation_runner.play()
-            self.gl_canvas.start_animation()
-            self.pause_simulation_action.setText("暂停")
+            return
+        # 没有仿真数据时禁止进入播放状态
+        if self.simulation_runner.total_duration() <= 0:
+            self._set_status("没有可播放的仿真数据")
+            return
+        self.simulation_runner.play()
+        self.gl_canvas.start_animation()
+        self.pause_simulation_action.setText("暂停")
 
     def _reset_view(self) -> None:
         """Restore the canvas to its latest automatic view range."""

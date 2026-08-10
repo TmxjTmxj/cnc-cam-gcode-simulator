@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 from math import ceil, cos, hypot, radians, sin
 
+from core.constants import (
+    ARC_DEGREE_STEP,
+    ARC_OUTPUT_G2G3,
+    CIRCLE_SEGMENT_COUNT,
+    LINE_JOIN_TOLERANCE,
+    MILLING_MODE,
+    PLUNGE_FEED_RATE,
+    TURNING_MODE,
+)
 from core.dxf_reader import DxfArc, DxfCircle, DxfLine, DxfReadResult
 from core.toolpath import CamParameters, GeneratedGCode, Toolpath, ToolpathArc, ToolpathPoint
 
-
-CIRCLE_SEGMENT_COUNT = 72
-ARC_DEGREE_STEP = 5.0
-PLUNGE_FEED_RATE = 100
-LINE_JOIN_TOLERANCE = 1e-3
-MILLING_MODE = "铣削模式"
-TURNING_MODE = "车削模式"
-ARC_OUTPUT_G2G3 = "G2/G3 圆弧"
+# 保留模块级名称以便向后兼容（测试中 `from core.cam_generator import MILLING_MODE` 仍可用）
+logger = logging.getLogger(__name__)
 
 
 class CamGenerator:
@@ -29,6 +33,7 @@ class CamGenerator:
         paths = [self._prepare_path(path, parameters) for path in paths]
         machinable_paths = [path for path in paths if path.is_machinable]
         if not machinable_paths:
+            logger.error("CAM 生成失败: 未发现可生成刀路的图元")
             raise ValueError("未发现可生成刀路的图元")
 
         lines = self._program_header(parameters)

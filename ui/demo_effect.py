@@ -21,6 +21,7 @@ from core.resource_utils import resource_path
 
 
 IMAGE_CANDIDATES = (
+    Path("assets/武陆逊.png"),
     Path("assets/demo.png"),
 )
 AUDIO_CANDIDATES = (

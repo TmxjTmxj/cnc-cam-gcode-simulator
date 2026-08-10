@@ -124,8 +124,8 @@ class GCodePlainTextEdit(QPlainTextEdit):
     def line_number_area_paint_event(self, event) -> None:  # type: ignore[no-untyped-def]
         """Paint visible line numbers using a subdued engineering editor palette."""
         painter = QPainter(self._line_number_area)
-        painter.fillRect(event.rect(), QColor("#0F172A"))
-        painter.setPen(QColor("#94A3B8"))
+        painter.fillRect(event.rect(), QColor("#1A1A1A"))
+        painter.setPen(QColor("#9CA3AF"))
 
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
@@ -172,7 +172,8 @@ class GCodePlainTextEdit(QPlainTextEdit):
         selections: list[QTextEdit.ExtraSelection] = []
 
         cursor_selection = QTextEdit.ExtraSelection()
-        cursor_selection.format.setBackground(QColor("#111C2F"))
+        cursor_selection.format.setBackground(QColor("#FFFFFF"))
+        cursor_selection.format.setForeground(QColor("#1A1E22"))
         cursor_selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
         cursor_selection.cursor = self.textCursor()
         cursor_selection.cursor.clearSelection()
