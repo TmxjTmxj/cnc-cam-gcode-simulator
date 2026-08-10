@@ -5,6 +5,8 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen.svg)](#测试)
 
+[English](README.en.md) | **中文**
+
 一个工程风格的 **CNC CAM 与 G代码仿真分析桌面软件**:导入 DXF 图纸,一键生成 Fanuc 风格 G代码,并在 2D / 3D 视图中仿真加工过程,同时支持铣削与车削两种加工模式。
 
 ![overview](docs/screenshots/overview.png)
@@ -50,8 +52,8 @@
 ### 安装与运行
 
 ```powershell
-git clone https://github.com/TmxjTmxj/G-.git
-cd G-
+git clone https://github.com/TmxjTmxj/cnc-cam-gcode-simulator.git
+cd cnc-cam-gcode-simulator
 py -m pip install -r requirements.txt
 py main.py
 ```
@@ -79,11 +81,11 @@ dist\CNC_CAM_Simulator\CNC_CAM_Simulator.exe
 ## 📁 项目结构
 
 ```
-G-/
+cnc-cam-gcode-simulator/
 ├── main.py                     # 程序入口(含登录门禁)
 ├── requirements.txt
 ├── build_exe.bat               # PyInstaller 打包脚本
-├── CNC_CAM_Simulator.spec
+├── cnc_cam_gcode_simulator.spec
 │
 ├── core/                       # 核心算法模块
 │   ├── dxf_reader.py           # DXF 图纸解析
