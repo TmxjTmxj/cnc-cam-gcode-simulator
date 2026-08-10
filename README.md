@@ -50,8 +50,8 @@
 ### 安装与运行
 
 ```powershell
-git clone https://github.com/<your-username>/cnc-cam-gcode-simulator.git
-cd cnc-cam-gcode-simulator
+git clone https://github.com/TmxjTmxj/G-.git
+cd G-
 py -m pip install -r requirements.txt
 py main.py
 ```
@@ -79,7 +79,7 @@ dist\CNC_CAM_Simulator\CNC_CAM_Simulator.exe
 ## 📁 项目结构
 
 ```
-cnc-cam-gcode-simulator/
+G-/
 ├── main.py                     # 程序入口(含登录门禁)
 ├── requirements.txt
 ├── build_exe.bat               # PyInstaller 打包脚本
